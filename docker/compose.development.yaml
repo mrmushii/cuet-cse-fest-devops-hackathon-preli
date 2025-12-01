@@ -1,6 +1,85 @@
-# services:
-  # backend:
+services:
+  backend:
+    container_name: cuet-backend-dev
+    build:
+      context: ../backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3847"
+    environment:
+      - NODE_ENV=development
+      - BACKEND_PORT=3847
+      - MONGO_URI=${MONGO_URI}
+      - MONGO_DATABASE=${MONGO_DATABASE}
+    volumes:
+      - ../backend/src:/app/src:ro
+      - /app/node_modules
+    networks:
+      - cuet-network-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3847/api/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
 
-  # gateway:
+  gateway:
+    container_name: cuet-gateway-dev
+    build:
+      context: ../gateway
+      dockerfile: Dockerfile.dev
+    ports:
+      - "${GATEWAY_PORT}:5921"
+    environment:
+      - NODE_ENV=development
+      - GATEWAY_PORT=5921
+      - BACKEND_URL=http://backend:3847
+    volumes:
+      - ../gateway/src:/app/src:ro
+      - /app/node_modules
+    networks:
+      - cuet-network-dev
+    depends_on:
+      - backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5921/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); })"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
-  # mongo:
+  mongo:
+    container_name: cuet-mongo-dev
+    image: mongo:7.0-jammy
+    ports:
+      - "27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DATABASE}
+    volumes:
+      - mongo-data-dev:/data/db
+      - mongo-config-dev:/data/configdb
+    networks:
+      - cuet-network-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: ["mongod", "--auth"]
+
+networks:
+  cuet-network-dev:
+    name: cuet-hackathon-dev
+    driver: bridge
+
+volumes:
+  mongo-data-dev:
+    name: mongo-data-dev
+  mongo-config-dev:
+    name: mongo-config-dev
