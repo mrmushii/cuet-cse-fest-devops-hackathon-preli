@@ -6,11 +6,11 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "3847"
+    env_file:
+      - ../.env
     environment:
       - NODE_ENV=development
       - BACKEND_PORT=3847
-      - MONGO_URI=${MONGO_URI}
-      - MONGO_DATABASE=${MONGO_DATABASE}
     volumes:
       - ../backend/src:/app/src:ro
       - /app/node_modules
@@ -30,7 +30,9 @@ services:
       context: ../gateway
       dockerfile: Dockerfile.dev
     ports:
-      - "${GATEWAY_PORT}:5921"
+      - "5921:5921"
+    env_file:
+      - ../.env
     environment:
       - NODE_ENV=development
       - GATEWAY_PORT=5921
@@ -55,10 +57,8 @@ services:
     image: mongo:7.0-jammy
     ports:
       - "27017"
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
-      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
-      - MONGO_INITDB_DATABASE=${MONGO_DATABASE}
+    env_file:
+      - ../.env
     volumes:
       - mongo-data-dev:/data/db
       - mongo-config-dev:/data/configdb
