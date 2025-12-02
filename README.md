@@ -135,7 +135,8 @@ curl http://localhost:3847/api/products
 
 1. **Fork the Repository**
    - Fork this repository to your GitHub account
-   - The repository must remain **private** during the contest
+   - Push the solution 5-10 before the contest ends
+   - Also you can have your own private repo
 
 2. **Make Repository Public**
    - In the **last 5 minutes** of the contest, make your repository **public**
