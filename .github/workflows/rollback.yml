@@ -1,0 +1,96 @@
+name: Rollback Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to rollback'
+        required: true
+        type: choice
+        options:
+          - backend
+          - gateway
+          - all
+      revision:
+        description: 'Target revision (leave empty for previous)'
+        required: false
+        type: string
+
+env:
+  NAMESPACE: cuet-app
+
+jobs:
+  rollback:
+    name: Rollback to Previous Version
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Rollback deployment
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENDSSH'
+            set -e
+            
+            NAMESPACE="${{ env.NAMESPACE }}"
+            SERVICE="${{ github.event.inputs.service }}"
+            REVISION="${{ github.event.inputs.revision }}"
+            
+            rollback_service() {
+              local svc=$1
+              echo "Rolling back $svc..."
+              
+              if [ -n "$REVISION" ]; then
+                kubectl rollout undo deployment/$svc -n $NAMESPACE --to-revision=$REVISION
+              else
+                kubectl rollout undo deployment/$svc -n $NAMESPACE
+              fi
+              
+              kubectl rollout status deployment/$svc -n $NAMESPACE --timeout=5m
+              echo "✓ $svc rolled back successfully"
+            }
+            
+            if [ "$SERVICE" = "all" ]; then
+              rollback_service "backend"
+              rollback_service "gateway"
+            else
+              rollback_service "$SERVICE"
+            fi
+            
+            echo "Deployment history:"
+            kubectl rollout history deployment/$SERVICE -n $NAMESPACE
+          ENDSSH
+
+      - name: Verify rollback
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENDSSH'
+            kubectl get pods -n ${{ env.NAMESPACE }}
+            
+            echo "Testing API health..."
+            MINIKUBE_IP=$(minikube ip)
+            curl -f http://$MINIKUBE_IP/api/health || echo "Health check failed after rollback"
+          ENDSSH
+
+      - name: Rollback summary
+        run: |
+          echo "### Rollback Complete :leftwards_arrow_with_hook:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Service:** \`${{ github.event.inputs.service }}\`" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.revision }}" ]; then
+            echo "**Target Revision:** \`${{ github.event.inputs.revision }}\`" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "**Target Revision:** Previous" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_rsa

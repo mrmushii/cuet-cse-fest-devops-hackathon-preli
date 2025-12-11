@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentry
+  namespace: cuet-app
+  labels:
+    app: sentry
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: sentry
+  template:
+    metadata:
+      labels:
+        app: sentry
+    spec:
+      containers:
+      - name: sentry
+        image: sentry:latest
+        ports:
+        - containerPort: 9000
+          name: http
+        env:
+        - name: SENTRY_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: sentry-secret
+              key: secret-key
+        - name: SENTRY_POSTGRES_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: sentry-config
+              key: SENTRY_POSTGRES_HOST
+        - name: SENTRY_REDIS_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: sentry-config
+              key: SENTRY_REDIS_HOST
+        - name: SENTRY_DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: sentry-config
+              key: SENTRY_DB_NAME
+        - name: SENTRY_DB_USER
+          valueFrom:
+            configMapKeyRef:
+              name: sentry-config
+              key: SENTRY_DB_USER
+        - name: SENTRY_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: sentry-secret
+              key: db-password
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          httpGet:
+            path: /_health/
+            port: 9000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 5

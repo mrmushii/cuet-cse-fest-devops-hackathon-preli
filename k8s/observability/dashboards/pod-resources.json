@@ -1,0 +1,59 @@
+{
+  "dashboard": {
+    "title": "Pod Resources",
+    "tags": ["kubernetes", "resources"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "CPU Usage vs Limits",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "(sum(rate(container_cpu_usage_seconds_total{namespace=\"cuet-app\",container!=\"\"}[5m])) by (pod) / sum(container_spec_cpu_quota{namespace=\"cuet-app\",container!=\"\"}) by (pod)) * 100",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "gridPos": {"h": 10, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "title": "Memory Usage vs Limits",
+        "type": "bargauge",
+        "targets": [
+          {
+            "expr": "(sum(container_memory_working_set_bytes{namespace=\"cuet-app\",container!=\"\"}) by (pod) / sum(container_spec_memory_limit_bytes{namespace=\"cuet-app\",container!=\"\"}) by (pod)) * 100",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "gridPos": {"h": 10, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "title": "HPA Status",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=\"cuet-app\"}",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 10}
+      },
+      {
+        "title": "Network I/O",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sum(rate(container_network_receive_bytes_total{namespace=\"cuet-app\"}[5m])) by (pod)",
+            "legendFormat": "{{ pod }} RX"
+          },
+          {
+            "expr": "sum(rate(container_network_transmit_bytes_total{namespace=\"cuet-app\"}[5m])) by (pod)",
+            "legendFormat": "{{ pod }} TX"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 18}
+      }
+    ],
+    "refresh": "30s"
+  }
+}

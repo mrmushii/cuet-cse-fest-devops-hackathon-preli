@@ -1,16 +1,55 @@
 services:
+  # ============================================
+  # REVERSE PROXY LAYER
+  # ============================================
+  nginx:
+    container_name: cuet-nginx-prod
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    networks:
+      - cuet-network-prod
+    depends_on:
+      - gateway
+      - kibana
+      - sentry
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.25'
+          memory: 64M
+
+  # ============================================
+  # APPLICATION SERVICES
+  # ============================================
   backend:
     container_name: cuet-backend-prod
     build:
       context: ../backend
       dockerfile: Dockerfile
     ports:
-      - "3847"
+      - "3847"  # Internal only, not exposed externally
     env_file:
       - ../.env
     environment:
       - NODE_ENV=production
       - BACKEND_PORT=3847
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - ELASTICSEARCH_NODE=http://elasticsearch:9200
+      - SENTRY_DSN=${SENTRY_DSN:-}
     networks:
       - cuet-network-prod
     restart: always
@@ -35,7 +74,7 @@ services:
       context: ../gateway
       dockerfile: Dockerfile
     ports:
-      - "5921:5921"
+      - "5921"  # Internal only, NGINX proxies to this
     env_file:
       - ../.env
     environment:
@@ -62,11 +101,14 @@ services:
           cpus: '0.25'
           memory: 128M
 
+  # ============================================
+  # DATA LAYER
+  # ============================================
   mongo:
     container_name: cuet-mongo-prod
     image: mongo:7.0-jammy
     ports:
-      - "27017"
+      - "27017"  # Internal only
     env_file:
       - ../.env
     volumes:
@@ -91,13 +133,203 @@ services:
           cpus: '0.5'
           memory: 512M
 
+  minio:
+    container_name: cuet-minio-prod
+    image: minio/minio:latest
+    ports:
+      - "9000"  # S3 API - Internal only
+      - "9001"  # Console UI - Internal only
+    env_file:
+      - ../.env
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio-data-prod:/data
+    networks:
+      - cuet-network-prod
+    command: server /data --console-address ":9001"
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # ============================================
+  # MONITORING & LOGGING
+  # ============================================
+  elasticsearch:
+    container_name: cuet-elasticsearch-prod
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    ports:
+      - "9200"  # Internal only
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data-prod:/usr/share/elasticsearch/data
+    networks:
+      - cuet-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+
+  kibana:
+    container_name: cuet-kibana-prod
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    ports:
+      - "5601"  # Internal only, accessed via NGINX at /kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_BASEPATH=/kibana
+      - SERVER_REWRITEBASEPATH=true
+    networks:
+      - cuet-network-prod
+    depends_on:
+      - elasticsearch
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/kibana/api/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  sentry:
+    container_name: cuet-sentry-prod
+    image: sentry:latest
+    ports:
+      - "9000"  # Internal only, accessed via NGINX at /sentry
+    env_file:
+      - ../.env
+    environment:
+      - SENTRY_SECRET_KEY=${SENTRY_SECRET_KEY:-}
+      - SENTRY_POSTGRES_HOST=sentry-postgres
+      - SENTRY_REDIS_HOST=sentry-redis
+      - SENTRY_DB_NAME=sentry
+      - SENTRY_DB_USER=sentry
+      - SENTRY_DB_PASSWORD=${SENTRY_DB_PASSWORD:-sentry}
+    networks:
+      - cuet-network-prod
+    depends_on:
+      - sentry-redis
+      - sentry-postgres
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/_health/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  sentry-redis:
+    container_name: cuet-sentry-redis-prod
+    image: redis:alpine
+    ports:
+      - "6379"  # Internal only
+    networks:
+      - cuet-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  sentry-postgres:
+    container_name: cuet-sentry-postgres-prod
+    image: postgres:14-alpine
+    ports:
+      - "5432"  # Internal only
+    environment:
+      - POSTGRES_USER=sentry
+      - POSTGRES_PASSWORD=${SENTRY_DB_PASSWORD:-sentry}
+      - POSTGRES_DB=sentry
+    volumes:
+      - sentry-postgres-data-prod:/var/lib/postgresql/data
+    networks:
+      - cuet-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+# ============================================
+# NETWORKS
+# ============================================
 networks:
   cuet-network-prod:
     name: cuet-hackathon-prod
     driver: bridge
 
+# ============================================
+# VOLUMES
+# ============================================
 volumes:
   mongo-data-prod:
     name: mongo-data-prod
   mongo-config-prod:
     name: mongo-config-prod
+  minio-data-prod:
+    name: minio-data-prod
+  elasticsearch-data-prod:
+    name: elasticsearch-data-prod
+  sentry-postgres-data-prod:
+    name: sentry-postgres-data-prod

@@ -1,0 +1,117 @@
+name: CD - Deploy to Minikube
+
+on:
+  workflow_run:
+    workflows: ["CI - Build and Push"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  NAMESPACE: cuet-app
+
+jobs:
+  deploy:
+    name: Deploy to Minikube VM
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Copy deployment scripts to VM
+        run: |
+          scp -i ~/.ssh/id_rsa .github/scripts/*.sh ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}:/tmp/
+
+      - name: Deploy to Minikube
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENDSSH'
+            set -e
+            
+            echo "Configuring Docker to use Minikube..."
+            eval $(minikube docker-env)
+            
+            echo "Logging in to GHCR..."
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            
+            echo "Pulling latest images..."
+            docker pull ghcr.io/${{ github.repository }}/backend:latest
+            docker pull ghcr.io/${{ github.repository }}/gateway:latest
+            
+            echo "Tagging images for Minikube..."
+            docker tag ghcr.io/${{ github.repository }}/backend:latest cuet-backend:latest
+            docker tag ghcr.io/${{ github.repository }}/gateway:latest cuet-gateway:latest
+            
+            echo "Applying Kubernetes manifests..."
+            kubectl apply -f ~/k8s/00-namespace.yaml
+            kubectl apply -f ~/k8s/01-secrets.yaml
+            kubectl apply -f ~/k8s/02-configmaps.yaml
+            kubectl apply -f ~/k8s/volumes/
+            kubectl apply -f ~/k8s/deployments/
+            kubectl apply -f ~/k8s/services/
+            kubectl apply -f ~/k8s/ingress/
+            kubectl apply -f ~/k8s/hpa/
+            
+            echo "Restarting deployments to pull new images..."
+            kubectl rollout restart deployment/backend -n ${{ env.NAMESPACE }}
+            kubectl rollout restart deployment/gateway -n ${{ env.NAMESPACE }}
+            
+            echo "Waiting for rollout to complete..."
+            kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }} --timeout=5m
+            kubectl rollout status deployment/gateway -n ${{ env.NAMESPACE }} --timeout=5m
+          ENDSSH
+
+      - name: Run health checks
+        id: health_check
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENDSSH'
+            chmod +x /tmp/health-check.sh
+            /tmp/health-check.sh
+          ENDSSH
+
+      - name: Rollback on failure
+        if: failure() && steps.health_check.outcome == 'failure'
+        run: |
+          ssh -i ~/.ssh/id_rsa ${{ secrets.VM_USER }}@${{ secrets.VM_HOST }} << 'ENDSSH'
+            echo "Health check failed, rolling back..."
+            kubectl rollout undo deployment/backend -n ${{ env.NAMESPACE }}
+            kubectl rollout undo deployment/gateway -n ${{ env.NAMESPACE }}
+            
+            echo "Waiting for rollback to complete..."
+            kubectl rollout status deployment/backend -n ${{ env.NAMESPACE }}
+            kubectl rollout status deployment/gateway -n ${{ env.NAMESPACE }}
+          ENDSSH
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "### Deployment Successful :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Namespace:** \`${{ env.NAMESPACE }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "**Images deployed:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend: \`ghcr.io/${{ github.repository }}/backend:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Gateway: \`ghcr.io/${{ github.repository }}/gateway:latest\`" >> $GITHUB_STEP_SUMMARY
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f ~/.ssh/id_rsa
