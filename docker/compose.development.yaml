@@ -95,6 +95,10 @@ services:
       - "27017:27017"  # Exposed for dev tools
     env_file:
       - ../.env
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_INITDB_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_INITDB_ROOT_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DATABASE}
     volumes:
       - mongo-data-dev:/data/db
       - mongo-config-dev:/data/configdb
