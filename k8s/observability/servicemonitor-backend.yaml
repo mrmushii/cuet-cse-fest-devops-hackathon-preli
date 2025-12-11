@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ServiceMonitor
+metadata:
+  name: backend-metrics
+  namespace: cuet-app
+  labels:
+    app: backend
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

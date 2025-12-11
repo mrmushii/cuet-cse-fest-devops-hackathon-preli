@@ -1,0 +1,64 @@
+{
+  "dashboard": {
+    "title": "Cluster Overview",
+    "tags": ["kubernetes", "cluster"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Total Pods Running",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "count(kube_pod_info{namespace=\"cuet-app\"})"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "title": "Pod Status",
+        "type": "piechart",
+        "targets": [
+          {
+            "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"cuet-app\"})",
+            "legendFormat": "{{ phase }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+      },
+      {
+        "title": "CPU Usage by Pod",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"cuet-app\",container!=\"\"}[5m])) by (pod)",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "title": "Memory Usage by Pod",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(container_memory_working_set_bytes{namespace=\"cuet-app\",container!=\"\"}) by (pod)",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "title": "Pod Restart Count",
+        "type": "timeseries",
+        "targets": [
+          {
+            "expr": "sum(kube_pod_container_status_restarts_total{namespace=\"cuet-app\"}) by (pod)",
+            "legendFormat": "{{ pod }}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}
+      }
+    ],
+    "refresh": "30s"
+  }
+}
