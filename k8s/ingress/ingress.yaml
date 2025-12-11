@@ -1,0 +1,39 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cuet-ingress
+  namespace: cuet-app
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      # API routes to gateway
+      - path: /api(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: gateway-service
+            port:
+              number: 5921
+      
+      # Kibana routes
+      - path: /kibana(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: kibana-service
+            port:
+              number: 5601
+      
+      # Sentry routes
+      - path: /sentry(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: sentry-service
+            port:
+              number: 9000

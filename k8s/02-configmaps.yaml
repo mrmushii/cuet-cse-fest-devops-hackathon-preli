@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: cuet-app
+data:
+  NODE_ENV: "production"
+  BACKEND_PORT: "3847"
+  GATEWAY_PORT: "5921"
+  MINIO_ENDPOINT: "minio-service"
+  MINIO_PORT: "9000"
+  ELASTICSEARCH_NODE: "http://elasticsearch-service:9200"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-config
+  namespace: cuet-app
+data:
+  MONGO_URI: "mongodb://mongodb-service:27017"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sentry-config
+  namespace: cuet-app
+data:
+  SENTRY_POSTGRES_HOST: "sentry-postgres-service"
+  SENTRY_REDIS_HOST: "sentry-redis-service"
+  SENTRY_DB_NAME: "sentry"
+  SENTRY_DB_USER: "sentry"

@@ -1,16 +1,49 @@
 services:
+  # ============================================
+  # REVERSE PROXY LAYER
+  # ============================================
+  nginx:
+    container_name: cuet-nginx-dev
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    ports:
+      - "80:80"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - cuet-network-dev
+    depends_on:
+      - gateway
+      - kibana
+      - sentry
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ============================================
+  # APPLICATION SERVICES
+  # ============================================
   backend:
     container_name: cuet-backend-dev
     build:
       context: ../backend
       dockerfile: Dockerfile.dev
     ports:
-      - "3847"
+      - "3847"  # Internal only
     env_file:
       - ../.env
     environment:
       - NODE_ENV=development
       - BACKEND_PORT=3847
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - ELASTICSEARCH_NODE=http://elasticsearch:9200
+      - SENTRY_DSN=${SENTRY_DSN:-}
     volumes:
       - ../backend/src:/app/src:ro
       - /app/node_modules
@@ -30,7 +63,7 @@ services:
       context: ../gateway
       dockerfile: Dockerfile.dev
     ports:
-      - "5921:5921"
+      - "5921"  # Internal only, NGINX proxies to this
     env_file:
       - ../.env
     environment:
@@ -52,11 +85,14 @@ services:
       retries: 3
       start_period: 10s
 
+  # ============================================
+  # DATA LAYER
+  # ============================================
   mongo:
     container_name: cuet-mongo-dev
     image: mongo:7.0-jammy
     ports:
-      - "27017"
+      - "27017:27017"  # Exposed for dev tools
     env_file:
       - ../.env
     volumes:
@@ -73,13 +109,155 @@ services:
       start_period: 30s
     command: ["mongod", "--auth"]
 
+  minio:
+    container_name: cuet-minio-dev
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"  # Exposed for dev access
+      - "9001:9001"  # Console UI
+    env_file:
+      - ../.env
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio-data-dev:/data
+    networks:
+      - cuet-network-dev
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================
+  # MONITORING & LOGGING
+  # ============================================
+  elasticsearch:
+    container_name: cuet-elasticsearch-dev
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    ports:
+      - "9200:9200"  # Exposed for dev tools
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch-data-dev:/usr/share/elasticsearch/data
+    networks:
+      - cuet-network-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  kibana:
+    container_name: cuet-kibana-dev
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    ports:
+      - "5601:5601"  # Exposed for direct dev access
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_BASEPATH=/kibana
+      - SERVER_REWRITEBASEPATH=true
+    networks:
+      - cuet-network-dev
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5601/kibana/api/status || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  sentry:
+    container_name: cuet-sentry-dev
+    image: sentry:latest
+    ports:
+      - "9002:9000"  # Exposed on different port to avoid MinIO conflict
+    env_file:
+      - ../.env
+    environment:
+      - SENTRY_SECRET_KEY=${SENTRY_SECRET_KEY:-changeme123456789012345678901234}
+      - SENTRY_POSTGRES_HOST=sentry-postgres
+      - SENTRY_REDIS_HOST=sentry-redis
+      - SENTRY_DB_NAME=sentry
+      - SENTRY_DB_USER=sentry
+      - SENTRY_DB_PASSWORD=${SENTRY_DB_PASSWORD:-sentry}
+    networks:
+      - cuet-network-dev
+    depends_on:
+      - sentry-redis
+      - sentry-postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9000/_health/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+
+  sentry-redis:
+    container_name: cuet-sentry-redis-dev
+    image: redis:alpine
+    ports:
+      - "6379"  # Internal only
+    networks:
+      - cuet-network-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  sentry-postgres:
+    container_name: cuet-sentry-postgres-dev
+    image: postgres:14-alpine
+    ports:
+      - "5432"  # Internal only
+    environment:
+      - POSTGRES_USER=sentry
+      - POSTGRES_PASSWORD=${SENTRY_DB_PASSWORD:-sentry}
+      - POSTGRES_DB=sentry
+    volumes:
+      - sentry-postgres-data-dev:/var/lib/postgresql/data
+    networks:
+      - cuet-network-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sentry"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+# ============================================
+# NETWORKS
+# ============================================
 networks:
   cuet-network-dev:
     name: cuet-hackathon-dev
     driver: bridge
 
+# ============================================
+# VOLUMES
+# ============================================
 volumes:
   mongo-data-dev:
     name: mongo-data-dev
   mongo-config-dev:
     name: mongo-config-dev
+  minio-data-dev:
+    name: minio-data-dev
+  elasticsearch-data-dev:
+    name: elasticsearch-data-dev
+  sentry-postgres-data-dev:
+    name: sentry-postgres-data-dev
