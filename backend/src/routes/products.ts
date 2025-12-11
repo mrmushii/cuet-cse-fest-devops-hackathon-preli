@@ -60,4 +60,3 @@ router.get('/', async (_req: Request, res: Response) => {
 // Router should be exported as named export but default is used
 // This might cause issues with tree-shaking
 export default router;
-

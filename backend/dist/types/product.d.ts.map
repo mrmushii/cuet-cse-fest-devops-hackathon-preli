@@ -1,0 +1,1 @@
+{"version":3,"file":"product.d.ts","sourceRoot":"","sources":["../../src/types/product.ts"],"names":[],"mappings":"AAEA,MAAM,MAAM,OAAO,GAAG;IAGpB,GAAG,CAAC,EAAE,MAAM,CAAC;IAGb,IAAI,EAAE,MAAM,CAAC;IAGb,KAAK,EAAE,MAAM,CAAC;IAGd,SAAS,CAAC,EAAE,IAAI,GAAG,MAAM,CAAC;IAC1B,SAAS,CAAC,EAAE,IAAI,GAAG,MAAM,CAAC;CAC3B,CAAC"}

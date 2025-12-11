@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.min.js
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+docker-compose*.yaml
+compose*.yml
+compose*.yaml
+docker/
+
+# Environment
+.env*
+
+# IDE
+.idea/
+.vscode/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# TypeScript declarations
+*.d.ts
