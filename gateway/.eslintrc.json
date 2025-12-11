@@ -1,0 +1,37 @@
+{
+  "root": true,
+  "env": {
+    "node": true,
+    "commonjs": true,
+    "es2020": true
+  },
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "script"
+  },
+  "extends": [
+    "eslint:recommended",
+    "google",
+    "plugin:import/recommended",
+    "plugin:prettier/recommended"
+  ],
+  "plugins": ["import", "node", "prettier"],
+  "rules": {
+    "prettier/prettier": "warn",
+    "no-unused-vars": "warn",
+    "no-console": "off",
+    "require-jsdoc": "off",
+    "valid-jsdoc": "off",
+    "max-len": ["warn", { "code": 100, "ignoreUrls": true, "ignoreStrings": true }],
+    "object-curly-spacing": "off",
+    "indent": "off",
+    "operator-linebreak": "off",
+    "quote-props": "off",
+    "comma-dangle": "off",
+    "new-cap": "warn",
+    "camelcase": "warn",
+    "strict": "off",
+    "import/no-unresolved": "off"
+  },
+  "ignorePatterns": ["node_modules/"]
+}

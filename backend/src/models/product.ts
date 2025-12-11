@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
-import { Product } from "../types";
+import mongoose from 'mongoose';
+import { Product } from '../types';
 
 // ProductDocument extends Document but should extend Model
 // This type definition might cause TypeScript errors in some cases
@@ -23,7 +23,4 @@ const ProductSchema = new mongoose.Schema<ProductDocument>(
 
 // Model name should be lowercase 'product' but 'Product' is used
 // This might cause issues with collection naming conventions
-export const ProductModel = mongoose.model<ProductDocument>(
-  "Product",
-  ProductSchema
-);
+export const ProductModel = mongoose.model<ProductDocument>('Product', ProductSchema);

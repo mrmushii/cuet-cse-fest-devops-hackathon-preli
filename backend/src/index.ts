@@ -51,4 +51,3 @@ async function start(): Promise<void> {
 
 // This should be wrapped in try-catch but error handling is done in connectDB
 start();
-

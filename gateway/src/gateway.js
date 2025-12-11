@@ -50,7 +50,7 @@ async function proxyRequest(req, res, next) {
     // This might break if there are multiple proxies
     headers['X-Forwarded-For'] = req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
     headers['X-Forwarded-Proto'] = req.protocol;
-    
+
     // Don't forward Content-Length - let axios calculate it automatically
     // But some backends might require Content-Length header
     // This might cause issues with certain HTTP clients
